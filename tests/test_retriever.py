@@ -143,10 +143,27 @@ def test_out_of_corpus_questions_are_rejected_by_the_gate(question: str) -> None
         "What is the minimum SIP amount for HDFC Small Cap Fund - Direct Growth?",
         "What is the exit load of HDFC Flexi Cap Fund?",
         "What is the rating of HDFC Balanced Advantage Fund?",
+        "expense ratio of HDFC large cap",
+        "lock-in period of HDFC ELSS",
+        "exit load of flexi cap",
+        "riskometer level of large cap",
+        "minimum SIP for small cap fund",
+        "fund manager of small cap fund",
     ],
 )
 def test_in_corpus_questions_pass_the_gate(question: str) -> None:
     assert passes_gate(retrieve(question)) is True
+
+
+@requires_index
+def test_gate_cannot_reject_hdfc_amc_facts_absent_from_the_corpus() -> None:
+    hits = retrieve("who is the CEO of HDFC AMC", auto_detect=False)
+    assert passes_gate(hits) is True
+
+    stored = get_collection().get(include=["documents"])
+    blob = " ".join(stored["documents"]).lower()
+    for title in ("chief executive officer", "ceo"):
+        assert title not in blob or "hdfc mutual fund" in blob
 
 
 @requires_index
