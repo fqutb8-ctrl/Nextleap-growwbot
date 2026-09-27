@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+chroma_db/
+artifacts/
+embed_cache/
+.DS_Store
+.idea/
+.vscode/
