@@ -5,7 +5,7 @@ import pytest
 import config
 import rag.chain as chain
 import rag.llm as llm
-from rag.chain import answer, build_context, last_updated_from, verify_text
+from rag.chain import answer, build_context, last_updated_from, verify
 from rag.guards import refusal_answer
 from rag.llm import LLMError
 from rag.schemas import Hit, RefusalType
@@ -198,10 +198,11 @@ def test_llm_retries_once_then_raises(monkeypatch) -> None:
 
 
 def test_verify_text_detects_sentinel_variants() -> None:
-    assert verify_text("I couldn't find that in my sources.").refusal_type == RefusalType.OUT_OF_CORPUS.value
-    assert verify_text("**I couldn't find that in my sources.**").refusal_type == RefusalType.OUT_OF_CORPUS.value
-    assert verify_text("").refusal_type == RefusalType.OUT_OF_CORPUS.value
-    assert verify_text("HDFC Large Cap TER is 0.69%.").refusal_type is None
+    hits = [make_hit()]
+    assert verify("I couldn't find that in my sources.", hits).refusal_type == RefusalType.OUT_OF_CORPUS.value
+    assert verify("**I couldn't find that in my sources.**", hits).refusal_type == RefusalType.OUT_OF_CORPUS.value
+    assert verify("", hits).refusal_type == RefusalType.OUT_OF_CORPUS.value
+    assert verify("HDFC Large Cap TER is 0.69%.", hits).refusal_type is None
 
 
 def test_last_updated_from_takes_max() -> None:

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
 import config
 from rag import llm
-from rag.guards import check, refusal_answer
+from rag.guards import check, detect_advice_intent, detect_performance, refusal_answer
 from rag.logging_utils import get_logger
 from rag.prompts import SENTINEL, SYSTEM_PROMPT, user_message
 from rag.query_expand import detect_scheme, expand
@@ -30,7 +30,29 @@ _ENCODER = None
 @dataclass
 class Verified:
     text: str
+    warnings: list[str] = field(default_factory=list)
     refusal_type: str | None = None
+
+
+_ABBREVIATIONS = (
+    "e.g.",
+    "i.e.",
+    "rs.",
+    "no.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "dr.",
+    "vs.",
+    "etc.",
+    "approx.",
+    "p.a.",
+    "w.e.f.",
+)
+
+_PLACEHOLDER = "\u0000"
+_URL_PATTERN = re.compile(r"https?://[^\s)\]<>\"]+")
+_PLACEHOLDER_PERIOD = re.compile(r"(?<=\d)\.(?=\d)")
 
 
 def _encoder():
@@ -95,14 +117,80 @@ def last_updated_from(hits: list[Hit]) -> str:
     return max(stamps) if stamps else ""
 
 
-def verify_text(text: str) -> Verified:
+def _protect(text: str) -> str:
+    for abbreviation in _ABBREVIATIONS:
+        stem = re.escape(abbreviation[:-1])
+        text = re.sub(
+            rf"\b{stem}\.",
+            stem.replace("\\", "") + _PLACEHOLDER,
+            text,
+            flags=re.IGNORECASE,
+        )
+    return _PLACEHOLDER_PERIOD.sub(_PLACEHOLDER, text)
+
+
+def split_sentences(text: str) -> list[str]:
+    protected = _protect((text or "").strip())
+    if not protected:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+", protected)
+    sentences = [part.replace(_PLACEHOLDER, ".").strip() for part in parts]
+    return [sentence for sentence in sentences if sentence]
+
+
+def count_sentences(text: str) -> int:
+    return len(split_sentences(text))
+
+
+def verify(text: str, hits: list[Hit]) -> Verified:
+    warnings: list[str] = []
     stripped = (text or "").strip()
+
     if not stripped:
-        return Verified("", RefusalType.OUT_OF_CORPUS.value)
+        return Verified(
+            "", ["empty model output"], RefusalType.OUT_OF_CORPUS.value
+        )
+
     normalised = re.sub(r"[^a-z]", "", stripped.lower().strip("*_`\"' "))
     if normalised == _SENTINEL_NORMALISED:
-        return Verified("", RefusalType.OUT_OF_CORPUS.value)
-    return Verified(stripped)
+        return Verified(
+            "",
+            ["model returned the out-of-corpus sentinel"],
+            RefusalType.OUT_OF_CORPUS.value,
+        )
+
+    body = _TRAILING_SUFFIX.sub("", stripped).strip()
+    if body != stripped:
+        warnings.append("replaced model-supplied last-updated line with the corpus date")
+
+    sentences = split_sentences(body)
+    if len(sentences) > 3:
+        body = " ".join(sentences[:3]).strip()
+        warnings.append(f"truncated {len(sentences)} sentences to the first 3")
+
+    context_urls = {hit.source_url for hit in hits if hit.source_url}
+    urls = _URL_PATTERN.findall(body)
+    if not any(url.rstrip(".,;") in context_urls for url in urls):
+        warnings.append(
+            "output cited no context URL; attaching the top-1 hit source_url"
+        )
+
+    if detect_advice_intent(body):
+        warnings.append("output contained advice language; replaced with static refusal")
+        return Verified(body, warnings, RefusalType.ADVICE.value)
+    if detect_performance(body):
+        warnings.append(
+            "output contained performance figures; replaced with static refusal"
+        )
+        return Verified(body, warnings, RefusalType.PERFORMANCE.value)
+
+    for url in urls:
+        if url.rstrip(".,;") not in context_urls:
+            body = body.replace(url, "")
+            warnings.append(f"stripped URL absent from context: {url}")
+    body = re.sub(r"[ \t]{2,}", " ", body)
+    body = re.sub(r" +([.,;:!?])", r"\1", body).strip()
+    return Verified(body, warnings, None)
 
 
 def decorate(text: str, hits: list[Hit], trace: QueryTrace) -> Answer:
@@ -194,10 +282,10 @@ def answer(question: str) -> Answer:
     trace.timings_ms["generate"] = _ms(step)
 
     step = time.perf_counter()
-    verified = verify_text(text)
+    verified = verify(text, hits)
+    trace.warnings.extend(verified.warnings)
     trace.timings_ms["verify"] = _ms(step)
     if verified.refusal_type is not None:
-        trace.warnings.append("generation returned the out-of-corpus sentinel")
         return _finish(
             refusal_answer(verified.refusal_type, scheme), trace, llm_called=True
         )
