@@ -125,6 +125,17 @@ TOP_K = 5
 MAX_DISTANCE = 0.62
 CONTEXT_TOKEN_BUDGET = 1800
 
+# guardrails
+MAX_QUERY_CHARS = 4000
+SCHEME_URLS = {
+    "hdfc_large_cap": "https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth",
+    "hdfc_flexi_cap": "https://groww.in/mutual-funds/hdfc-equity-fund-direct-growth",
+    "hdfc_elss": "https://groww.in/mutual-funds/hdfc-elss-tax-saver-fund-direct-plan-growth",
+    "hdfc_small_cap": "https://groww.in/mutual-funds/hdfc-small-cap-fund-direct-growth",
+    "hdfc_balanced_advantage": "https://groww.in/mutual-funds/hdfc-balanced-advantage-fund-direct-growth",
+}
+HDFC_MF_HOME = "https://www.hdfcmf.com/"
+
 # llm
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1")
