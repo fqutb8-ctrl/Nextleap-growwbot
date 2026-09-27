@@ -270,11 +270,15 @@ def _split_unit(kind: str, text: str, strategy: str, size: int) -> list[str]:
     return pieces
 
 
-def _chunk_text(section: Section, body: str) -> str:
+def _heading_prefix(section: Section) -> str:
     if not config.CHUNK_INCLUDE_HEADING:
-        return body
-    heading = " > ".join(section.heading_path) or section.heading
-    return f"{heading}\n{body}"
+        return ""
+    return " > ".join(section.heading_path) or section.heading
+
+
+def _chunk_text(section: Section, body: str) -> str:
+    prefix = _heading_prefix(section)
+    return body if not prefix else f"{prefix}\n{body}"
 
 
 def _chunk_id(source_url: str, heading_path: Sequence[str], ordinal: int) -> str:
@@ -295,6 +299,18 @@ def _make_chunk(document: Document, section: Section, ordinal: int, body: str) -
     )
 
 
+def _body_budget(section: Section, size: int) -> int:
+    prefix = _heading_prefix(section)
+    if not prefix:
+        return size
+    reserved = count_tokens(f"{prefix}\n")
+    if reserved >= size:
+        raise ChunkInvariantError(
+            f"heading prefix {prefix!r} needs {reserved} tokens, cap is {size}"
+        )
+    return size - reserved
+
+
 def chunk_by_heading(
     document: Document,
     max_tokens: int | None = None,
@@ -305,9 +321,10 @@ def chunk_by_heading(
     chunks: list[Chunk] = []
     ordinal = 0
     for section in document.sections:
+        budget = _body_budget(section, size)
         bodies: list[str] = []
         for kind, text in _section_units(section):
-            bodies.extend(_split_unit(kind, text, chosen, size))
+            bodies.extend(_split_unit(kind, text, chosen, budget))
         for body in bodies:
             chunks.append(_make_chunk(document, section, ordinal, body))
             ordinal += 1
