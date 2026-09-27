@@ -49,6 +49,13 @@ def get_model():
                 f"{config.EMBED_MODEL} reports dim {reported} "
                 f"but config.EMBED_DIM is {config.EMBED_DIM}"
             )
+        if config.EMBED_MAX_SEQ_LENGTH != model.max_seq_length:
+            log.warn(
+                "max_seq_length_raised",
+                model_default=model.max_seq_length,
+                configured=config.EMBED_MAX_SEQ_LENGTH,
+            )
+            model.max_seq_length = config.EMBED_MAX_SEQ_LENGTH
         _MODEL = model
     return _MODEL
 
@@ -102,6 +109,14 @@ def _cache_paths() -> tuple[Path, Path]:
     return npy, keys
 
 
+def _cache_identity() -> dict[str, object]:
+    return {
+        "model": config.EMBED_MODEL,
+        "dim": config.EMBED_DIM,
+        "max_seq_length": config.EMBED_MAX_SEQ_LENGTH,
+    }
+
+
 def _load_cache() -> tuple[dict[str, int], np.ndarray]:
     npy_path, keys_path = _cache_paths()
     if not (npy_path.is_file() and keys_path.is_file()):
@@ -113,9 +128,15 @@ def _load_cache() -> tuple[dict[str, int], np.ndarray]:
         log.warn("cache_unreadable", reason=type(exc).__name__)
         return {}, _empty()
 
-    cached_model = payload.get("model")
-    if cached_model != config.EMBED_MODEL or int(payload.get("dim", -1)) != config.EMBED_DIM:
-        log.warn("cache_discarded", cached_model=cached_model, config_model=config.EMBED_MODEL)
+    identity = _cache_identity()
+    if any(payload.get(key) != value for key, value in identity.items()):
+        log.warn(
+            "cache_discarded",
+            cached_model=payload.get("model"),
+            cached_window=payload.get("max_seq_length"),
+            config_model=identity["model"],
+            config_window=identity["max_seq_length"],
+        )
         return {}, _empty()
 
     keys = payload.get("keys") or []
@@ -137,10 +158,7 @@ def _save_cache(index: dict[str, int], matrix: np.ndarray) -> None:
 
     keys_tmp = keys_path.with_name(f"{keys_path.stem}.tmp.json")
     keys_tmp.write_text(
-        json.dumps(
-            {"model": config.EMBED_MODEL, "dim": config.EMBED_DIM, "keys": keys},
-            ensure_ascii=False,
-        ),
+        json.dumps({**_cache_identity(), "keys": keys}, ensure_ascii=False),
         encoding="utf-8",
     )
     os.replace(keys_tmp, keys_path)
@@ -215,6 +233,7 @@ def collection_metadata(built_at: str | None = None) -> dict[str, object]:
         "hnsw:space": "cosine",
         "embed_model": config.EMBED_MODEL,
         "embed_dim": config.EMBED_DIM,
+        "embed_max_seq_length": config.EMBED_MAX_SEQ_LENGTH,
         "corpus_built_at": stamp,
     }
 
@@ -236,6 +255,12 @@ def assert_model_compatible(collection_metadata: dict | None) -> None:
             f"embedding dim mismatch: collection embed_dim={found_dim} "
             f"vs config.EMBED_DIM={config.EMBED_DIM}; rebuild the index"
         )
+    found_window = collection_metadata.get("embed_max_seq_length")
+    if found_window is not None and int(found_window) != config.EMBED_MAX_SEQ_LENGTH:
+        raise ModelMismatchError(
+            f"embedding window mismatch: collection embed_max_seq_length={found_window} "
+            f"vs config.EMBED_MAX_SEQ_LENGTH={config.EMBED_MAX_SEQ_LENGTH}; rebuild the index"
+        )
 
 
 def _similarity(left: np.ndarray, right: np.ndarray) -> float:
@@ -243,7 +268,7 @@ def _similarity(left: np.ndarray, right: np.ndarray) -> float:
 
 
 def probe() -> str:
-    get_model()
+    model = get_model()
     same = embed_texts(list(PROBE_SAME_TOPIC))
     unrelated = embed_texts(list(PROBE_UNRELATED))
     norms = np.linalg.norm(same, axis=1)
@@ -252,10 +277,19 @@ def probe() -> str:
     passed = sim_same > sim_unrelated
     status = "PASS" if passed else "FAIL"
 
+    window = int(model.max_seq_length)
+    lengths = [
+        len(model.tokenizer.encode(a, add_special_tokens=False))
+        + len(model.tokenizer.encode(b, add_special_tokens=False))
+        for a, b in (PROBE_SAME_TOPIC, PROBE_UNRELATED)
+    ]
+    fits = max(lengths) <= window
+
     lines = [
         f"model       {config.EMBED_MODEL}",
         f"dim         {same.shape[1]} (config.EMBED_DIM={config.EMBED_DIM})",
         f"device      {config.EMBED_DEVICE}",
+        f"window      {window} tokens (native default 256)",
         f"norms       min={norms.min():.6f} max={norms.max():.6f} (unit vectors)",
         "",
         "same topic:",
@@ -269,6 +303,8 @@ def probe() -> str:
         f"  sim={sim_unrelated:.4f}",
         "",
         f"assert sim(same topic) > sim(unrelated)  ->  {status}",
+        f"assert probe pairs fit inside the {window}-token window  ->  "
+        f"{'PASS' if fits else 'FAIL'} (longest pair {max(lengths)} tokens)",
     ]
 
     index, matrix = _load_cache()

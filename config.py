@@ -105,8 +105,8 @@ EMBED_DIM = 384
 EMBED_BATCH = 64
 EMBED_CACHE_NPY = ARTIFACTS_DIR / "embed_cache.npy"
 EMBED_CACHE_KEYS_JSON = ARTIFACTS_DIR / "embed_cache_keys.json"
-EMBED_CACHE_MODEL_KEYS = ("model", "dim")
 EMBED_DEVICE = "cpu"
+EMBED_MAX_SEQ_LENGTH = 512
 
 # chunking
 CHUNK_STRATEGY = "recursive"
