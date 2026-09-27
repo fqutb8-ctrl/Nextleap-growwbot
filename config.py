@@ -103,6 +103,10 @@ LOADER_WHITESPACE_PATTERN = r"\s+"
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMBED_DIM = 384
 EMBED_BATCH = 64
+EMBED_CACHE_NPY = ARTIFACTS_DIR / "embed_cache.npy"
+EMBED_CACHE_KEYS_JSON = ARTIFACTS_DIR / "embed_cache_keys.json"
+EMBED_CACHE_MODEL_KEYS = ("model", "dim")
+EMBED_DEVICE = "cpu"
 
 # chunking
 CHUNK_STRATEGY = "recursive"
