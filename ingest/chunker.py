@@ -237,20 +237,28 @@ def _split_table(text: str, size: int) -> list[str]:
     return out
 
 
-def _section_units(section: Section) -> list[tuple[str, str]]:
-    units: list[tuple[str, str]] = []
+def _section_units(section: Section) -> list[tuple[str, str, str]]:
+    units: list[tuple[str, str, str]] = []
     prose: list[str] = []
+    kinds: list[str] = []
     for block in section.blocks:
         if block.kind == "table":
             if prose:
-                units.append(("text", "\n".join(prose)))
+                units.append(("text", "\n".join(prose), _join_kinds(kinds)))
                 prose = []
-            units.append(("table", block.text))
+                kinds = []
+            units.append(("table", block.text, block.kind))
         else:
             prose.append(block.text)
+            if block.kind not in kinds:
+                kinds.append(block.kind)
     if prose:
-        units.append(("text", "\n".join(prose)))
+        units.append(("text", "\n".join(prose), _join_kinds(kinds)))
     return units
+
+
+def _join_kinds(kinds: Sequence[str]) -> str:
+    return ",".join(kinds)
 
 
 def _split_unit(kind: str, text: str, strategy: str, size: int) -> list[str]:
@@ -284,7 +292,7 @@ def _chunk_text(section: Section, body: str) -> str:
 def _chunk_id(source_url: str, heading_path: Sequence[str], ordinal: int) -> str:
     key = source_url + "|".join(heading_path) + str(ordinal)
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
-def _make_chunk(document: Document, section: Section, ordinal: int, body: str) -> Chunk:
+def _make_chunk(document: Document, section: Section, ordinal: int, body: str, block_types: str) -> Chunk:
     return Chunk(
         chunk_id=_chunk_id(document.source_url, section.heading_path, ordinal),
         text=_chunk_text(section, body),
@@ -296,6 +304,7 @@ def _make_chunk(document: Document, section: Section, ordinal: int, body: str) -
         fetched_at=document.fetched_at,
         heading_path=list(section.heading_path),
         n_tokens=count_tokens(_chunk_text(section, body)),
+        block_types=block_types,
     )
 
 
@@ -322,11 +331,12 @@ def chunk_by_heading(
     ordinal = 0
     for section in document.sections:
         budget = _body_budget(section, size)
-        bodies: list[str] = []
-        for kind, text in _section_units(section):
-            bodies.extend(_split_unit(kind, text, chosen, budget))
-        for body in bodies:
-            chunks.append(_make_chunk(document, section, ordinal, body))
+        bodies: list[tuple[str, str]] = []
+        for kind, text, block_types in _section_units(section):
+            for piece in _split_unit(kind, text, chosen, budget):
+                bodies.append((piece, block_types))
+        for body, block_types in bodies:
+            chunks.append(_make_chunk(document, section, ordinal, body, block_types))
             ordinal += 1
     return chunks
 

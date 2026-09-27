@@ -19,6 +19,7 @@ RAW_HTML_DIR = ARTIFACTS_DIR / "raw"
 FETCH_MANIFEST = ARTIFACTS_DIR / "fetch_manifest.json"
 RAW_DOCS_JSON = ARTIFACTS_DIR / "raw_docs.json"
 CHUNKS_JSONL = ARTIFACTS_DIR / "chunks.jsonl"
+CORPUS_META_JSON = ARTIFACTS_DIR / "corpus_meta.json"
 COLLECTION_NAME = "mf_faq_hdfc"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 REBUILD_COLLECTION = True

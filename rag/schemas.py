@@ -49,6 +49,7 @@ class Chunk:
     fetched_at: str
     heading_path: list[str] = field(default_factory=list)
     n_tokens: int = 0
+    block_types: str = ""
 
 
 @dataclass
