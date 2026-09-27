@@ -7,6 +7,7 @@ import pytest
 
 import config
 from ingest.embedder import ModelMismatchError
+from rag.query_expand import detect_scheme
 from rag.retriever import (
     EmptyCollectionError,
     Hit,
@@ -67,23 +68,30 @@ def test_gate_is_false_for_no_hits() -> None:
     assert passes_gate([]) is False
 
 
-def test_gate_passes_when_all_hits_within_limit() -> None:
+def test_gate_passes_when_best_hit_within_limit() -> None:
     assert passes_gate([make_hit(0.10), make_hit(0.60)]) is True
 
 
-def test_gate_fails_when_any_hit_over_limit() -> None:
+def test_gate_fails_when_best_hit_over_limit() -> None:
+    assert passes_gate([make_hit(0.65), make_hit(0.70)]) is False
+
+
+def test_gate_aggregation_min_ignores_weak_tail_hits(monkeypatch) -> None:
+    monkeypatch.setattr(config, "GATE_AGGREGATION", "min")
+    assert passes_gate([make_hit(0.10), make_hit(0.90)]) is True
+    assert passes_gate([make_hit(0.70)]) is False
+
+
+def test_gate_aggregation_max_requires_every_hit(monkeypatch) -> None:
+    monkeypatch.setattr(config, "GATE_AGGREGATION", "max")
+    assert passes_gate([make_hit(0.10), make_hit(0.60)]) is False
+    assert passes_gate([make_hit(0.10), make_hit(0.40)]) is True
     assert passes_gate([make_hit(0.10), make_hit(0.65)]) is False
 
 
 def test_gate_boundary_is_inclusive() -> None:
     assert passes_gate([make_hit(config.MAX_DISTANCE)]) is True
     assert passes_gate([make_hit(config.MAX_DISTANCE + 0.001)]) is False
-
-
-def test_gate_aggregation_min_uses_best_evidence(monkeypatch) -> None:
-    monkeypatch.setattr(config, "GATE_AGGREGATION", "min")
-    assert passes_gate([make_hit(0.10), make_hit(0.90)]) is True
-    assert passes_gate([make_hit(0.70)]) is False
 
 
 def test_gate_rejects_unknown_aggregation(monkeypatch) -> None:
@@ -113,6 +121,35 @@ def test_expected_scheme_page_appears_in_top_k(question: str = "exit load") -> N
 
 
 @requires_index
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the GDP growth rate of India in 2026?",
+        "What is the price of gold in Mumbai?",
+        "Who won the FIFA World Cup in 2022?",
+        "What is the weather in Bangalore today?",
+    ],
+)
+def test_out_of_corpus_questions_are_rejected_by_the_gate(question: str) -> None:
+    assert passes_gate(retrieve(question, auto_detect=False)) is False
+
+
+@requires_index
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the expense ratio of the HDFC Large Cap Fund - Direct Growth?",
+        "Is there a lock-in period in the HDFC ELSS Tax Saver Fund?",
+        "What is the minimum SIP amount for HDFC Small Cap Fund - Direct Growth?",
+        "What is the exit load of HDFC Flexi Cap Fund?",
+        "What is the rating of HDFC Balanced Advantage Fund?",
+    ],
+)
+def test_in_corpus_questions_pass_the_gate(question: str) -> None:
+    assert passes_gate(retrieve(question)) is True
+
+
+@requires_index
 def test_topk_ordering_is_stable_within_a_process() -> None:
     first = retrieve("minimum SIP amount", auto_detect=False)
     second = retrieve("minimum SIP amount", auto_detect=False)
@@ -121,15 +158,18 @@ def test_topk_ordering_is_stable_within_a_process() -> None:
 
 
 @requires_index
-@pytest.mark.xfail(
-    reason="ranks 4-5 sit in a five-way tie at distance 0.4802, and Chroma resolves "
-    "ties differently across processes, so top-k membership at tied distances is not "
-    "reproducible. Bare 'equity fund' is also absent from config.SCHEME_ALIASES (only "
-    "'hdfc equity fund'), so no filter applies. Same weakness as Phase 4 holding rows.",
-)
-def test_sector_allocation_question_known_gap() -> None:
-    hits = retrieve("sector allocation of equity fund", auto_detect=False)
-    assert "hdfc_flexi_cap" in {hit.scheme for hit in hits}
+def test_sector_allocation_data_is_indexed_but_not_retrievable_by_name() -> None:
+    stored = get_collection().get(where={"scheme": "hdfc_flexi_cap"}, include=["metadatas"])
+    sections = {str((meta or {}).get("section", "")) for meta in stored["metadatas"]}
+    assert any("holding" in section.lower() for section in sections)
+
+    hits = retrieve("sector allocation of equity fund", scheme="hdfc_flexi_cap")
+    assert not any("holding" in hit.section.lower() for hit in hits)
+
+
+def test_bare_equity_fund_is_not_a_scheme_alias() -> None:
+    assert detect_scheme("sector allocation of equity fund") is None
+    assert detect_scheme("hdfc equity fund") == "hdfc_flexi_cap"
 
 
 @requires_index

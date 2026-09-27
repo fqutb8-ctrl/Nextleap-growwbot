@@ -122,8 +122,8 @@ CHUNK_STRATEGIES = ("recursive", "semantic", "hybrid")
 
 # retrieval
 TOP_K = 5
-MAX_DISTANCE = 0.62
-GATE_AGGREGATION = "max"
+MAX_DISTANCE = 0.49
+GATE_AGGREGATION = "min"
 CONTEXT_TOKEN_BUDGET = 1800
 
 # guardrails
