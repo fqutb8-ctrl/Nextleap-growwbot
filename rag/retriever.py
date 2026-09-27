@@ -23,6 +23,9 @@ class EmptyCollectionError(RetrievalError):
     pass
 
 
+IndexMissingError = MissingCollectionError
+
+
 def get_collection():
     import chromadb
 
@@ -102,28 +105,36 @@ def retrieve(question: str, scheme: str | None = None, auto_detect: bool = True)
     return hits
 
 
-def passes_gate(hits: list[Hit]) -> bool:
-    if not hits:
-        return False
+def gate_score(hits: list[Hit]) -> float:
+    aggregation = getattr(config, "GATE_AGGREGATION", "min")
     distances = [hit.distance for hit in hits]
-    aggregation = getattr(config, "GATE_AGGREGATION", "max")
     if aggregation == "min":
-        return min(distances) <= config.MAX_DISTANCE
+        return min(distances)
     if aggregation == "max":
-        return max(distances) <= config.MAX_DISTANCE
+        return max(distances)
     raise RetrievalError(
         f"unknown GATE_AGGREGATION {aggregation!r}; expected 'max' or 'min'"
     )
 
 
+def passes_gate(hits: list[Hit]) -> bool:
+    if not hits:
+        return False
+    return gate_score(hits) <= config.MAX_DISTANCE
+
+
 def format_probe(question: str, hits: list[Hit], scheme: str | None) -> str:
+    aggregation = getattr(config, "GATE_AGGREGATION", "min")
+    label = "best" if aggregation == "min" else "worst"
+    score = gate_score(hits) if hits else None
+    score_text = f"{score:.4f}" if score is not None else "n/a"
+    verdict = "PASS" if passes_gate(hits) else "FAIL"
     lines = [
         f"question: {question}",
         f"expanded: {expand(question)}",
         f"scheme filter: {scheme or 'none'}",
-        f"gate: {'PASS' if passes_gate(hits) else 'FAIL'} "
-        f"(max_distance={max((h.distance for h in hits), default=0.0):.4f} "
-        f"limit={config.MAX_DISTANCE})",
+        f"gate: {verdict} ({label}_distance="
+        f"{score_text} limit={config.MAX_DISTANCE} aggregation={aggregation})",
         "",
     ]
     if not hits:
@@ -140,25 +151,89 @@ def format_probe(question: str, hits: list[Hit], scheme: str | None) -> str:
     return "\n".join(lines)
 
 
+def run_interactive(scheme: str | None, unfiltered: bool, show_text: int) -> int:
+    from ingest.embedder import get_model
+
+    get_model()
+    print(f"retrieval tester | collection={config.COLLECTION_NAME} top_k={config.TOP_K}")
+    print(
+        f"gate: aggregation={getattr(config, 'GATE_AGGREGATION', 'min')} "
+        f"limit={config.MAX_DISTANCE}"
+    )
+    print(f"scheme filter: {scheme or 'auto-detect'}{' (disabled)' if unfiltered else ''}")
+    print("type a question, or 'quit' to exit\n")
+    while True:
+        try:
+            question = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not question:
+            continue
+        if question.lower() in ("quit", "exit", "q"):
+            return 0
+        try:
+            hits = retrieve(question, scheme, auto_detect=not unfiltered)
+            applied = None if unfiltered else (scheme or detect_scheme(question))
+        except (RetrievalError, EmbeddingError) as exc:
+            log.error("probe_failed", reason=str(exc))
+            continue
+        print()
+        print(format_probe(question, hits, applied))
+        if show_text:
+            for rank, hit in enumerate(hits, 1):
+                if rank > show_text:
+                    print(f"   ... {len(hits) - show_text} more hit(s), rerun with --show-text {config.TOP_K}")
+                    break
+                print(f"   [{rank}] {hit.chunk_id} {hit.section}")
+                print("   " + hit.text.replace("\n", " ")[:400])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Probe the vector index and print ranked hits with distances."
     )
-    parser.add_argument("--probe", required=True, help="question to retrieve for")
+    parser.add_argument("--probe", help="question to retrieve for, then exit")
     parser.add_argument(
         "--scheme",
         default=None,
         help="force a scheme filter instead of auto-detecting one",
     )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="keep asking questions in one process instead of requiring --probe",
+    )
+    parser.add_argument(
+        "--unfiltered",
+        action="store_true",
+        help="skip scheme auto-detection so all five schemes compete",
+    )
+    parser.add_argument(
+        "--show-text",
+        type=int,
+        default=0,
+        metavar="N",
+        help="print the first N hit texts in full (interactive mode)",
+    )
     args = parser.parse_args()
 
+    if not args.probe and not args.interactive:
+        parser.print_help()
+        return 0
+
+    if args.interactive:
+        if args.show_text < 0:
+            parser.error("--show-text must be >= 0")
+        return run_interactive(args.scheme, args.unfiltered, args.show_text)
+
     try:
-        hits = retrieve(args.probe, args.scheme)
+        hits = retrieve(args.probe, args.scheme, auto_detect=not args.unfiltered)
     except (RetrievalError, EmbeddingError) as exc:
         log.error("probe_failed", reason=str(exc))
         return 1
 
-    applied = args.scheme or detect_scheme(args.probe)
+    applied = None if args.unfiltered else (args.scheme or detect_scheme(args.probe))
     print(format_probe(args.probe, hits, applied))
     return 0
 
