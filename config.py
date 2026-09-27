@@ -136,6 +136,9 @@ SCHEME_URLS = {
 }
 HDFC_MF_HOME = "https://www.hdfcmf.com/"
 
+# query expansion
+EXPANSION_RATIO = 2.0
+
 # llm
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1")
