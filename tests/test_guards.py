@@ -21,6 +21,9 @@ ADVICE_QUERIES = [
     "which is better, large cap or small cap",
     "is it good to start an ELSS fund",
     "what do you recommend for a 5 year horizon",
+    "Which HDFC fund gives the best returns?",
+    "which scheme has the highest return",
+    "best returns of HDFC large cap",
 ]
 
 PII_QUERIES = [
@@ -40,6 +43,7 @@ CLEAN_QUERIES = [
     "minimum sip amount",
     "who is the fund manager",
     "what is the benchmark",
+    "what is the riskometer level of HDFC ELSS Tax Saver Fund",
 ]
 
 

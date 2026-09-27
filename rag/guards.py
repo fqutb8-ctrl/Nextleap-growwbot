@@ -30,6 +30,8 @@ ADVICE_PATTERNS = tuple(
         r"\ballocat",
         r"\bportfolio for me\b",
         r"\bbest (scheme|fund|option)\b",
+        r"\b(best|highest|top) returns?\b",
+        r"\bwhich (hdfc )?(fund|scheme|one)\b[^?]{0,40}\breturns?\b",
         r"\bcan i invest in\b",
         r"\bwhich fund should\b",
         r"\bopinion\b",
@@ -66,6 +68,27 @@ PERFORMANCE_PATTERNS = tuple(
 QUOTED_SPAN = re.compile(
     r"[\"'‘’“”][^\"'‘’“”]*[\"'‘’“”]"
 )
+
+PROJECTION_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(expected|projected|forecast|estimated|likely|potential)\b[^.]{0,40}\breturn",
+        r"\bwill (return|grow|give|yield|rise|fall)\b",
+        r"\bshould (return|grow|give|yield)\b",
+        r"\bguarantee[sd]?\b",
+        r"\bdouble your money\b",
+        r"\bhow much will\b",
+        r"\b(target|assumed) return\b",
+    )
+)
+
+
+def detect_projection(text: str) -> bool:
+    body = QUOTED_SPAN.sub(" ", text or "")
+    for pattern in PROJECTION_PATTERNS:
+        if pattern.search(body):
+            return True
+    return False
 
 NEGATION_WINDOW = re.compile(r"\b(not|n't|never|avoid)\b", re.IGNORECASE)
 

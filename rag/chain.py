@@ -8,7 +8,7 @@ import numpy as np
 
 import config
 from rag import llm
-from rag.guards import check, detect_advice_intent, detect_performance, refusal_answer
+from rag.guards import check, detect_advice_intent, detect_projection, refusal_answer
 from rag.logging_utils import get_logger
 from rag.prompts import SENTINEL, SYSTEM_PROMPT, user_message
 from rag.query_expand import detect_scheme, expand
@@ -151,15 +151,15 @@ def verify(text: str, hits: list[Hit]) -> Verified:
             "", ["empty model output"], RefusalType.OUT_OF_CORPUS.value
         )
 
-    normalised = re.sub(r"[^a-z]", "", stripped.lower().strip("*_`\"' "))
-    if normalised == _SENTINEL_NORMALISED:
+    body = _TRAILING_SUFFIX.sub("", stripped).strip()
+    normalised = re.sub(r"[^a-z]", "", body.lower().strip("*_`\"' "))
+    if normalised == _SENTINEL_NORMALISED or normalised.startswith(_SENTINEL_NORMALISED):
         return Verified(
             "",
             ["model returned the out-of-corpus sentinel"],
             RefusalType.OUT_OF_CORPUS.value,
         )
 
-    body = _TRAILING_SUFFIX.sub("", stripped).strip()
     if body != stripped:
         warnings.append("replaced model-supplied last-updated line with the corpus date")
 
@@ -178,7 +178,7 @@ def verify(text: str, hits: list[Hit]) -> Verified:
     if detect_advice_intent(body):
         warnings.append("output contained advice language; replaced with static refusal")
         return Verified(body, warnings, RefusalType.ADVICE.value)
-    if detect_performance(body):
+    if detect_projection(body):
         warnings.append(
             "output contained performance figures; replaced with static refusal"
         )

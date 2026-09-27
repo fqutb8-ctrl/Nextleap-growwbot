@@ -149,7 +149,7 @@ PROVIDER_BASE_URLS = {
     "lmstudio": "http://localhost:1234/v1",
 }
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen3.8-27b")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", PROVIDER_BASE_URLS.get(LLM_PROVIDER, ""))
 LLM_TEMPERATURE = 0.0
 LLM_TOP_P = 1.0

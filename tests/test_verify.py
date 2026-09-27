@@ -73,7 +73,7 @@ def test_advice_language_triggers_static_refusal(monkeypatch) -> None:
 
 
 def test_performance_language_triggers_static_refusal(monkeypatch) -> None:
-    result = run(monkeypatch, "The CAGR of this fund is 14.2% over three years.")
+    result = run(monkeypatch, "This fund is expected to return 14.2% over three years.")
     assert result.refusal is True
     assert result.refusal_type == RefusalType.PERFORMANCE.value
     assert "14.2" not in result.text
@@ -98,6 +98,54 @@ def test_sentinel_output_is_out_of_corpus(monkeypatch) -> None:
     result = run(monkeypatch, "I couldn't find that in my sources.")
     assert result.refusal_type == RefusalType.OUT_OF_CORPUS.value
     assert any("sentinel" in w for w in result.trace.warnings)
+
+
+def test_sentinel_plus_last_updated_line_is_out_of_corpus(monkeypatch) -> None:
+    result = run(
+        monkeypatch,
+        "I couldn't find that in my sources.\n\nLast updated from sources: 2026-09-27T06:47:02Z",
+    )
+    assert result.refusal is True
+    assert result.refusal_type == RefusalType.OUT_OF_CORPUS.value
+    assert result.citations == []
+
+
+def test_sentinel_with_markdown_and_official_page_is_out_of_corpus(monkeypatch) -> None:
+    result = run(
+        monkeypatch,
+        "**I couldn't find that in my sources.** Please check the official scheme page.\n\n"
+        "Official page: https://www.hdfcmf.com/",
+    )
+    assert result.refusal_type == RefusalType.OUT_OF_CORPUS.value
+
+
+def test_sentinel_lookalike_factual_answer_is_not_out_of_corpus(monkeypatch) -> None:
+    result = run(
+        monkeypatch,
+        "The corpus does not list a CEO, but the fund house section names HDFC Mutual Fund.",
+    )
+    assert result.refusal_type is None
+
+
+def test_historical_return_facts_are_answered_not_refused(monkeypatch) -> None:
+    for text in [
+        "The 3 year return of HDFC Large Cap Fund is 12.4%.",
+        "The annualised return of the ELSS fund is 14.2% over 3 years.",
+        "HDFC Large Cap has a CAGR of 13.1% since inception.",
+    ]:
+        result = run(monkeypatch, text)
+        assert result.refusal_type is None, f"wrongly refused {text!r}"
+
+
+def test_forward_looking_projections_are_refused(monkeypatch) -> None:
+    for text in [
+        "The fund is expected to return 15% next year.",
+        "This scheme will return around 18% annually.",
+        "You should return to this fund after 5 years.",
+        "Returns are guaranteed at 12%.",
+    ]:
+        result = run(monkeypatch, text)
+        assert result.refusal_type == RefusalType.PERFORMANCE.value, f"allowed {text!r}"
 
 
 def test_every_bad_stub_produces_a_warning(monkeypatch) -> None:
