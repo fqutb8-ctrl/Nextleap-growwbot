@@ -18,6 +18,7 @@ ARTIFACTS_DIR = BASE_DIR / "artifacts"
 RAW_HTML_DIR = ARTIFACTS_DIR / "raw"
 FETCH_MANIFEST = ARTIFACTS_DIR / "fetch_manifest.json"
 RAW_DOCS_JSON = ARTIFACTS_DIR / "raw_docs.json"
+CHUNKS_JSONL = ARTIFACTS_DIR / "chunks.jsonl"
 COLLECTION_NAME = "mf_faq_hdfc"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 REBUILD_COLLECTION = True
@@ -95,6 +96,7 @@ LOADER_RISK_PILL_LABEL = "Riskometer level"
 LOADER_KV_MAX_LABEL_CHARS = 30
 LOADER_KV_REJECT_LABEL_PATTERN = r"\d+(?:\.\d+)?\s*%"
 LOADER_KV_REJECT_NUMERIC_LABEL_PATTERN = r"^[+\-₹$]?\s*\d[\d.,]*\s*%?$"
+LOADER_INTERACTIVE_CLASSES = ("cur-po",)
 LOADER_WHITESPACE_PATTERN = r"\s+"
 
 # embedding
@@ -103,10 +105,15 @@ EMBED_DIM = 384
 EMBED_BATCH = 64
 
 # chunking
-CHUNK_STRATEGY = "hybrid"
+CHUNK_STRATEGY = "recursive"
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
 SEMANTIC_BREAKPOINT_PERCENTILE = 85
+SEMANTIC_BUFFER_SIZE = 1
+CHUNK_SEPARATORS = ("\n\n", "\n", ". ", " ")
+CHUNK_INCLUDE_HEADING = True
+TOKENIZER_ENCODING = "cl100k_base"
+CHUNK_STRATEGIES = ("recursive", "semantic", "hybrid")
 
 # retrieval
 TOP_K = 5

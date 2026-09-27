@@ -38,6 +38,7 @@ _RISK_PILL = re.compile(config.LOADER_RISK_PILL_PATTERN)
 _KV_MAX_LABEL_CHARS = config.LOADER_KV_MAX_LABEL_CHARS
 _KV_REJECT_LABEL = re.compile(config.LOADER_KV_REJECT_LABEL_PATTERN)
 _KV_REJECT_NUMERIC_LABEL = re.compile(config.LOADER_KV_REJECT_NUMERIC_LABEL_PATTERN)
+_INTERACTIVE_CLASSES = frozenset(config.LOADER_INTERACTIVE_CLASSES)
 _COMMENT_TYPES = (Comment, Declaration, Doctype, ProcessingInstruction)
 
 
@@ -482,6 +483,8 @@ def _is_terminal(node: Tag) -> bool:
 
 
 def _make_pair(label_node: Tag, value_node: Tag) -> tuple[str, str] | None:
+    if _is_interactive(label_node) and _is_interactive(value_node):
+        return None
     label = _norm(label_node.get_text(" ", strip=True))
     value = _norm(value_node.get_text(" ", strip=True))
     if not label or not value or len(label) > _KV_MAX_LABEL_CHARS:
@@ -491,6 +494,11 @@ def _make_pair(label_node: Tag, value_node: Tag) -> tuple[str, str] | None:
     ):
         return None
     return label, value
+
+
+def _is_interactive(node: Tag) -> bool:
+    classes = node.get("class") or ()
+    return any(name in classes for name in _INTERACTIVE_CLASSES)
 
 
 def _dl_pairs(node: Tag) -> list[tuple[str, str]] | None:
