@@ -205,6 +205,45 @@ def verify_index(chunks: list[Chunk] | None = None) -> bool:
     return True
 
 
+def prune_orphan_segments() -> list[str]:
+    import shutil
+    import sqlite3
+    import uuid
+
+    sqlite_path = config.CHROMA_DIR / "chroma.sqlite3"
+    if not sqlite_path.is_file():
+        return []
+    try:
+        connection = sqlite3.connect(f"file:{sqlite_path.as_posix()}?mode=ro", uri=True)
+        try:
+            rows = connection.execute("select id from segments").fetchall()
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        log_persist.warn("prune_skipped", reason=str(exc))
+        return []
+
+    registered = {row[0] for row in rows}
+    removed: list[str] = []
+    for entry in sorted(config.CHROMA_DIR.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            uuid.UUID(entry.name)
+        except ValueError:
+            continue
+        if entry.name in registered:
+            continue
+        freed = sum(item.stat().st_size for item in entry.rglob("*") if item.is_file())
+        shutil.rmtree(entry)
+        removed.append(f"{entry.name}:{freed}")
+    if removed:
+        log_persist.info("orphan_segments_removed", count=len(removed), ids=",".join(removed))
+    else:
+        log_persist.info("orphan_segments_none", registered=len(registered))
+    return removed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Load, chunk, embed and persist the corpus into ChromaDB."
@@ -214,11 +253,19 @@ def main() -> int:
         action="store_true",
         help="verify the existing collection against the chunk file and exit",
     )
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="delete vector-segment directories that the registry no longer references, then exit",
+    )
     args = parser.parse_args()
 
     try:
         if args.verify:
             verify_index()
+            return 0
+        if args.prune:
+            prune_orphan_segments()
             return 0
 
         started = time.perf_counter()
@@ -266,6 +313,7 @@ def main() -> int:
 
         corpus_last_updated(collection)
         verify_index(chunks)
+        prune_orphan_segments()
     except (ChunkingError, EmbeddingError, IndexBuildError, StructureError) as exc:
         log_persist.error("aborted", reason=str(exc))
         return 1
