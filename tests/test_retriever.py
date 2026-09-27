@@ -54,9 +54,12 @@ def make_hit(distance: float, scheme: str = "hdfc_large_cap", section: str = "Ex
         text="Exit load of 1% if redeemed within 1 year",
         section=section,
         scheme=scheme,
+        scheme_name="HDFC Large Cap Fund - Direct Growth",
+        category="large_cap",
         source_url=config.SCHEME_URLS.get(scheme, config.HDFC_MF_HOME),
         fetched_at="2026-09-27T00:00:00Z",
         distance=distance,
+        heading_path=[section],
     )
 
 

@@ -63,6 +63,7 @@ class Hit:
     source_url: str
     fetched_at: str
     distance: float
+    heading_path: list[str] = field(default_factory=list)
 
 
 @dataclass

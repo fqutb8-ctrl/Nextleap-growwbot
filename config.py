@@ -141,11 +141,24 @@ HDFC_MF_HOME = "https://www.hdfcmf.com/"
 EXPANSION_RATIO = 2.0
 
 # llm
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
+PROVIDER_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "openai": "https://api.openai.com/v1",
+    "ollama": "http://localhost:11434/v1",
+    "together": "https://api.together.xyz/v1",
+    "lmstudio": "http://localhost:1234/v1",
+}
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", PROVIDER_BASE_URLS.get(LLM_PROVIDER, ""))
 LLM_TEMPERATURE = 0.0
+LLM_TOP_P = 1.0
+LLM_MAX_TOKENS = 400
+LLM_TIMEOUT_S = 60.0
 LLM_API_KEY_ENV = "LLM_API_KEY"
+CONTEXT_DEDUPE_SIMILARITY = 0.97
+COST_CEILING_USD = 0.0
+CI = os.getenv("CI", "").lower() in ("1", "true", "yes")
 
 QUERY_SYNONYMS = {
     "sip": ["systematic investment plan", "monthly investment"],

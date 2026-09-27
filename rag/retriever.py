@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 
 import config
 from ingest.embedder import EmbeddingError, assert_model_compatible, embed_query
 from rag.logging_utils import get_logger
 from rag.query_expand import detect_scheme, expand
+from rag.schemas import Hit
 
 log = get_logger("retrieve")
 
@@ -21,17 +21,6 @@ class MissingCollectionError(RetrievalError):
 
 class EmptyCollectionError(RetrievalError):
     pass
-
-
-@dataclass
-class Hit:
-    chunk_id: str
-    text: str
-    section: str
-    scheme: str
-    source_url: str
-    fetched_at: str
-    distance: float
 
 
 def get_collection():
@@ -63,15 +52,19 @@ def _to_hits(result) -> list[Hit]:
     hits: list[Hit] = []
     for chunk_id, text, meta, distance in zip(ids, documents, metadatas, distances):
         meta = meta or {}
+        path = str(meta.get("heading_path", ""))
         hits.append(
             Hit(
                 chunk_id=chunk_id,
                 text=text or "",
                 section=str(meta.get("section", "")),
                 scheme=str(meta.get("scheme", "")),
+                scheme_name=str(meta.get("scheme_name", "")),
+                category=str(meta.get("category", "")),
                 source_url=str(meta.get("source_url", "")),
                 fetched_at=str(meta.get("fetched_at", "")),
                 distance=float(distance),
+                heading_path=[part for part in path.split(" > ") if part],
             )
         )
     return hits
