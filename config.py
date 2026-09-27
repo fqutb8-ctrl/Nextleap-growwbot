@@ -13,15 +13,15 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 
 # corpus
-SOURCES_CSV = BASE_DIR / "ingest" / "sources.csv"
-ARTIFACTS_DIR = BASE_DIR / "artifacts"
+SOURCES_CSV = Path(os.getenv("SOURCES_CSV") or BASE_DIR / "ingest" / "sources.csv")
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR") or BASE_DIR / "artifacts")
 RAW_HTML_DIR = ARTIFACTS_DIR / "raw"
 FETCH_MANIFEST = ARTIFACTS_DIR / "fetch_manifest.json"
 RAW_DOCS_JSON = ARTIFACTS_DIR / "raw_docs.json"
 CHUNKS_JSONL = ARTIFACTS_DIR / "chunks.jsonl"
 CORPUS_META_JSON = ARTIFACTS_DIR / "corpus_meta.json"
 COLLECTION_NAME = "mf_faq_hdfc"
-CHROMA_DIR = BASE_DIR / "chroma_db"
+CHROMA_DIR = Path(os.getenv("CHROMA_DIR") or BASE_DIR / "chroma_db")
 REBUILD_COLLECTION = True
 
 # fetching
@@ -159,6 +159,19 @@ LLM_API_KEY_ENV = "LLM_API_KEY"
 CONTEXT_DEDUPE_SIMILARITY = 0.97
 COST_CEILING_USD = 0.0
 CI = os.getenv("CI", "").lower() in ("1", "true", "yes")
+
+# api
+API_TITLE = "HDFC Mutual Fund FAQ API"
+API_VERSION = "1.0.0"
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("PORT") or os.getenv("API_PORT") or 8000)
+API_WORKERS = int(os.getenv("WEB_CONCURRENCY") or 1)
+API_WARMUP = os.getenv("API_WARMUP", "1").lower() not in ("0", "false", "no")
+CORS_ORIGINS = tuple(
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+)
 
 QUERY_SYNONYMS = {
     "sip": ["systematic investment plan", "monthly investment"],

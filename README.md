@@ -6,8 +6,8 @@ scheme pages. No investment advice, no performance figures, no model-memory answ
 
 ## Status
 
-Phases 0–9 implemented. Phases 10–13 remain (post-generation verification, UI,
-eval calibration, documentation).
+Phases 0–11 implemented. A FastAPI service (`api.py`) sits beside the Gradio UI so the
+assistant can be hosted and called over HTTP.
 
 | Phase | Component |
 |---|---|
@@ -19,6 +19,9 @@ eval calibration, documentation).
 | 7 | Query normalization, synonym expansion, scheme detection |
 | 8 | Vector retriever with scheme filtering and score gate |
 | 9 | Context builder, strict system prompt, end-to-end chain |
+| 10 | Post-generation verification and answer decoration |
+| 11 | Gradio chat UI with citations, disclaimer, retrieval trace |
+| 12 | `api.py` — REST surface over the same `rag.chain.answer` call |
 
 ## LLM provider (open decision O3)
 
@@ -47,6 +50,12 @@ Ollama and LM Studio run without a key.
 
 ## Running
 
+Use **Python 3.11 or 3.12** — that is what the container runs. On 3.13/3.14,
+`chromadb` 1.0.20 still uses the `pydantic.v1` shim, which breaks on the
+`pydantic<=2.12.3` that `gradio` 5.50.0 requires. If you must stay on 3.14, install
+`gradio==5.50.0` with `pydantic==2.13.5` and accept the declared-cap conflict; the
+app runs, but `pip install -r requirements.txt` will undo it.
+
 ```bash
 pip install -r requirements.txt
 
@@ -58,6 +67,69 @@ python -c "from rag.chain import answer; print(answer('what is the expense ratio
 
 python -m pytest tests/ -v
 ```
+
+## HTTP API
+
+`api.py` exposes the same `rag.chain.answer` path the Gradio UI uses, so guardrails,
+the score gate, and citation decoration behave identically on both surfaces.
+
+```bash
+python -m api                                    # http://127.0.0.1:8000/docs
+```
+
+| Route | Purpose |
+|---|---|
+| `GET /health` | Liveness plus index state, source count, provider, model, corpus date |
+| `GET /sources` | The five allowlisted scheme pages |
+| `POST /ask` | `{"question": "...", "include_trace": true}` → answer, citations, trace |
+
+```bash
+curl http://127.0.0.1:8000/health
+
+curl -X POST http://127.0.0.1:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is the expense ratio of HDFC Large Cap Fund - Direct Growth?","include_trace":false}'
+```
+
+`/ask` returns `200` with `refusal` and `refusal_type` set for guardrail and
+out-of-corpus answers, `422` for a blank or oversized question, `503` when the index
+or the LLM is unavailable, and `500` otherwise. A PII refusal never echoes the
+submitted question back — the `question` field is replaced with a redaction marker.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PORT` | `8000` | Render and Railway inject this |
+| `API_HOST` | `0.0.0.0` | |
+| `API_WORKERS` | `1` | One worker keeps the Chroma client and model single-resident |
+| `API_WARMUP` | `1` | Loads the embedder at startup so request one is not slow |
+| `CORS_ORIGINS` | `*` | Comma-separated allowlist for a hosted frontend |
+| `CHROMA_DIR` | `./chroma_db` | Point at a mounted volume in production |
+| `ARTIFACTS_DIR` | `./artifacts` | Holds `corpus_meta.json` |
+| `SOURCES_CSV` | `./ingest/sources.csv` | |
+
+## Deploying
+
+`Dockerfile` installs the CPU-only torch wheel, bakes the MiniLM model into the image
+at `HF_HOME=/opt/hf`, builds the Chroma index during the image build, and starts with
+a verify-then-rebuild guard so a stale or missing index self-heals on boot. The
+container listens on `$PORT`.
+
+```bash
+docker build -t hdfc-mf-faq .
+docker run --rm -p 8000:8000 --env-file .env hdfc-mf-faq
+```
+
+`render.yaml` is a Render blueprint for the same image. On Render use the `standard`
+plan: the free plan's 512 MB cannot hold torch plus the embedder.
+
+```bash
+git push                                   # Render builds from the repo
+# then in Render: New > Blueprint > select this repo > Apply
+```
+
+Railway works from the same Dockerfile — set the root directory to the repo root,
+build with the Dockerfile, and mount a volume at `/app/chroma_db` if you want the
+index to survive restarts.
 
 ## Architecture notes
 

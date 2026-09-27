@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import json
-
 import gradio as gr
 
-import config
 from ingest.embedder import EmbeddingError, get_model
-from ingest.loaders import load_sources
 from rag.chain import answer
 from rag.llm import LLMError
 from rag.logging_utils import get_logger
+from rag.present import BUILD_HINT, corpus_line, index_ready, trace_payload
 from rag.prompts import DISCLAIMER
 from rag.retriever import IndexMissingError, RetrievalError
 from rag.schemas import RefusalType
@@ -28,43 +25,11 @@ WELCOME = (
 )
 
 PII_PLACEHOLDER = "_[withheld: that question contained personal information]_"
-BUILD_HINT = "The search index is unavailable. Run `python -m ingest.build_index` first."
 LLM_HINT = (
     "Generation is unavailable. Check `LLM_API_KEY` and `LLM_MODEL` in your `.env` "
     "against the README, then restart the app."
 )
 ERROR_TEXT = "Something went wrong answering that question. Please try again."
-
-
-def index_ready() -> bool:
-    try:
-        from rag.retriever import get_collection
-
-        get_collection()
-    except (RetrievalError, EmbeddingError):
-        return False
-    return True
-
-
-def corpus_line() -> str:
-    try:
-        sources = len(load_sources())
-    except Exception:
-        sources = 0
-    payload: dict = {}
-    if config.CORPUS_META_JSON.exists():
-        try:
-            payload = json.loads(config.CORPUS_META_JSON.read_text(encoding="utf-8"))
-        except ValueError:
-            payload = {}
-    updated = payload.get("last_updated") or "unknown"
-    chunks = payload.get("chunk_count")
-    parts = [f"Sources: {sources} scheme pages", f"Last updated: {updated}"]
-    if chunks:
-        parts.append(f"Chunks: {chunks}")
-    if not index_ready():
-        parts.append(BUILD_HINT)
-    return " · ".join(parts)
 
 
 def citation_html(result) -> str:
@@ -81,18 +46,6 @@ def footer(result) -> str:
     if not result.last_updated:
         return ""
     return f"Last updated from sources: {result.last_updated}"
-
-
-def trace_payload(result) -> dict:
-    trace = result.trace
-    return {
-        "guards": trace.guards,
-        "expanded_query": trace.expanded_query,
-        "filter": trace.filter,
-        "hits": trace.hits,
-        "timings_ms": trace.timings_ms,
-        "warnings": trace.warnings,
-    }
 
 
 def respond(question: str, history: list | None):
