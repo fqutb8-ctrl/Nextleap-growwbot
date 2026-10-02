@@ -2,7 +2,7 @@ services:
   - type: web
     name: hdfc-mf-faq-api
     runtime: docker
-    plan: standard
+    plan: free
     healthCheckPath: /health
     autoDeploy: true
     envVars:

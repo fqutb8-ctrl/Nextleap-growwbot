@@ -125,8 +125,12 @@ docker build -t hdfc-mf-faq .
 docker run --rm -p 8000:8000 --env-file .env hdfc-mf-faq
 ```
 
-`render.yaml` is a Render blueprint for the same image. On Render use the `standard`
-plan: the free plan's 512 MB cannot hold torch plus the embedder.
+`render.yaml` is a Render blueprint for the same image, on the `free` plan. The 512 MB
+free instance holds this workload: measured 361 MiB idle after warmup and 417 MiB
+after five sequential queries, with no OOM across a six-way concurrent burst. The
+`standard` plan buys faster cold starts and more CPU headroom, not correctness. Note
+that free instances spin down after 15 minutes idle, so the first request after a gap
+pays roughly a 30 s cold start while the index verifies and the embedder loads.
 
 ```bash
 git push                                   # Render builds from the repo
