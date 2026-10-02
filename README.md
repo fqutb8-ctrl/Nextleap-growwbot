@@ -25,7 +25,7 @@ assistant can be hosted and called over HTTP.
 
 ## LLM provider (open decision O3)
 
-**Chosen: Groq, `llama-3.3-70b-versatile`, over Groq's OpenAI-compatible API.**
+**Chosen: Groq, `qwen/qwen3.8-27b`, over Groq's OpenAI-compatible API.**
 
 - Base URL: `https://api.groq.com/openai/v1`
 - Selected for a generous free tier, which keeps the cost ceiling at $0, and for an
@@ -40,7 +40,7 @@ Copy `.env.example` to `.env` and set the key:
 
 ```
 LLM_PROVIDER=groq
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=qwen/qwen3.8-27b
 LLM_API_KEY=<your key>
 ```
 
@@ -54,10 +54,14 @@ Use **Python 3.11 or 3.12** — that is what the container runs. On 3.13/3.14,
 `chromadb` 1.0.20 still uses the `pydantic.v1` shim, which breaks on the
 `pydantic<=2.12.3` that `gradio` 5.50.0 requires. If you must stay on 3.14, install
 `gradio==5.50.0` with `pydantic==2.13.5` and accept the declared-cap conflict; the
-app runs, but `pip install -r requirements.txt` will undo it.
+app runs, but `pip install -r requirements-dev.txt` will undo it.
+
+`requirements.txt` is the runtime set the container installs — no UI, no test runner.
+`requirements-dev.txt` adds `gradio` for `app.py` and `pytest` for the suite. Install
+the dev set to work on this repo; the API and its tests run on the runtime set alone.
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 python -m ingest.build_index          # fetch, chunk, embed, persist, verify
 python -m ingest.build_index --verify # verify the existing index only
@@ -112,7 +116,9 @@ submitted question back — the `question` field is replaced with a redaction ma
 `Dockerfile` installs the CPU-only torch wheel, bakes the MiniLM model into the image
 at `HF_HOME=/opt/hf`, builds the Chroma index during the image build, and starts with
 a verify-then-rebuild guard so a stale or missing index self-heals on boot. The
-container listens on `$PORT`.
+container listens on `$PORT`. It copies `config.py`, `api.py`, `ingest/`, and `rag/`
+only — `app.py` and the Gradio dependency stay out of the API image, which is worth
+about 430 MB.
 
 ```bash
 docker build -t hdfc-mf-faq .
