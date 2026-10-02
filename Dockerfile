@@ -21,6 +21,15 @@ COPY config.py api.py ./
 COPY ingest/ ingest/
 COPY rag/ rag/
 
+# chromadb eagerly loads a default ONNX embedding function and a Kubernetes client
+# that this project never uses: every collection is opened with
+# embedding_function=None and persisted to local disk. Dropping both removes about
+# 150 MB of image and, because onnxruntime is loaded at import time, roughly
+# 240 MB of resident memory. The import check fails the build loudly if a future
+# chromadb release makes either one mandatory.
+RUN pip uninstall -y kubernetes onnxruntime \
+ && python -c "import chromadb, api, ingest.embedder, rag.chain"
+
 RUN ok=0; \
     for i in 1 2 3 4 5; do \
       if python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"; then \
