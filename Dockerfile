@@ -21,8 +21,14 @@ COPY config.py app.py api.py ./
 COPY ingest/ ingest/
 COPY rag/ rag/
 
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+RUN ok=0; \
+    for i in 1 2 3 4 5; do \
+      if python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"; then \
+        ok=1; break; \
+      fi; \
+      echo "model_download_attempt_${i}_failed"; sleep $((i * 10)); \
+    done; \
+    if [ "$ok" != "1" ]; then echo "model_bake_failed"; exit 1; fi
 
 RUN python -m ingest.build_index || echo "index build deferred to first container start"
 
