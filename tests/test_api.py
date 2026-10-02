@@ -194,10 +194,25 @@ def test_include_trace_false_omits_trace(monkeypatch) -> None:
     assert response.json()["trace"] is None
 
 
-def test_root_redirects_to_docs() -> None:
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code in (307, 302)
-    assert response.headers["location"] == "/docs"
+def test_root_serves_the_gradio_chat_ui() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    body = response.text
+    assert "gradio-app" in body
+    assert "HDFC Mutual Fund FAQ" in body
+
+
+def test_docs_still_serves_swagger_alongside_the_ui() -> None:
+    response = client.get("/docs")
+    assert response.status_code == 200
+    assert "swagger" in response.text.lower()
+
+
+def test_api_routes_survive_the_gradio_mount() -> None:
+    assert client.get("/health").status_code == 200
+    assert client.get("/sources").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
 
 
 def test_openapi_schema_builds() -> None:

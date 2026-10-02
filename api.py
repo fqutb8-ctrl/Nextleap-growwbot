@@ -5,10 +5,12 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
+import gradio as gr
+
 import config
+from app import build_demo
 from ingest.embedder import EmbeddingError, get_model
 from ingest.loaders import load_sources
 from rag.chain import answer
@@ -118,11 +120,6 @@ app.add_middleware(
 )
 
 
-@app.get("/", include_in_schema=False)
-def root() -> RedirectResponse:
-    return RedirectResponse(url="/docs")
-
-
 @app.get("/health", response_model=HealthResponse, tags=["ops"])
 def health() -> HealthResponse:
     ready = index_ready()
@@ -178,6 +175,9 @@ def ask(request: AskRequest) -> AskResponse:
         refusal_type=result.refusal_type,
         trace=trace_payload(result) if request.include_trace else None,
     )
+
+
+gr.mount_gradio_app(app, build_demo().queue(), path="/")
 
 
 def main() -> None:

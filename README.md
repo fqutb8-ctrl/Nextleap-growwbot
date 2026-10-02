@@ -116,21 +116,37 @@ submitted question back — the `question` field is replaced with a redaction ma
 `Dockerfile` installs the CPU-only torch wheel, bakes the MiniLM model into the image
 at `HF_HOME=/opt/hf`, builds the Chroma index during the image build, and starts with
 a verify-then-rebuild guard so a stale or missing index self-heals on boot. The
-container listens on `$PORT`. It copies `config.py`, `api.py`, `ingest/`, and `rag/`
-only — `app.py` and the Gradio dependency stay out of the API image, which is worth
-about 430 MB.
+container listens on `$PORT`.
+
+`api.py` mounts the Gradio chat UI from `app.py` at `/` via
+`gr.mount_gradio_app`, so one container serves both surfaces: the UI at `/`, Swagger at
+`/docs`, and the JSON API at `/ask`, `/health`, and `/sources`. The mount happens at
+import time, so the UI is present however `api:app` is launched. Because `/` is a
+catch-all mount, every API route must stay declared above it.
 
 ```bash
 docker build -t hdfc-mf-faq .
 docker run --rm -p 8000:8000 --env-file .env hdfc-mf-faq
 ```
 
-`render.yaml` is a Render blueprint for the same image, on the `free` plan. The 512 MB
-free instance holds this workload: measured 361 MiB idle after warmup and 417 MiB
-after five sequential queries, with no OOM across a six-way concurrent burst. The
-`standard` plan buys faster cold starts and more CPU headroom, not correctness. Note
-that free instances spin down after 15 minutes idle, so the first request after a gap
-pays roughly a 30 s cold start while the index verifies and the embedder loads.
+`render.yaml` is a Render blueprint for the same image, on the `free` plan. Measured
+resident memory against the 512 MB free instance, with the Gradio UI mounted at `/`:
+
+| State | Memory | Share |
+|---|---|---|
+| Idle after boot and embedder warmup | 404 MiB | 79% |
+| After three sequential questions | 479 MiB | 94% |
+| Peak during a six-way concurrent burst | 505 MiB | 99% |
+
+Without the UI mounted the same measurements are 361 MiB idle, 417 MiB sequential, and
+430 MiB peak, so Gradio costs roughly 60-75 MiB. Nothing OOM-killed in any test, but a
+99% peak leaves about 7 MiB of headroom, which is thin for a public endpoint. Dropping
+Gradio's event queue (`build_demo().queue()`) does not meaningfully change this. Use the
+`standard` plan (2 GB) if the service will see real concurrent traffic; the `free` plan
+is viable for a demo or portfolio piece.
+
+Free instances spin down after 15 minutes idle, so the first request after a gap pays
+roughly a 30 s cold start while the index verifies and the embedder loads.
 
 ```bash
 git push                                   # Render builds from the repo

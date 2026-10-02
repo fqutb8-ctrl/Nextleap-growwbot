@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir torch==2.9.0 \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py api.py ./
+COPY config.py api.py app.py ./
 COPY ingest/ ingest/
 COPY rag/ rag/
 
