@@ -163,6 +163,68 @@ index to survive restarts.
 - **First call is slow.** The embedding model loads lazily (~15 s); warm queries run
   in roughly 50 ms.
 
-## Safety
+## Known limitation: short "value" chunks are hard to retrieve
 
+Some questions the corpus *can* answer are still refused. The refusal is truthful and
+safe, but it is a real gap, not intended behaviour.
+
+Scheme pages state facts as very short labelled rows. For `hdfc_elss` the index holds
+three separate exit-load chunks, including a bare `Exit load\nNil` and
+`Exit Load\n01 Jan 2013: --`. These are too short to sit near a full-sentence query, so
+a question about them ranks the scheme's generic `About…` summary chunk first instead.
+
+Two things in the query path make this worse:
+
+- `rag/retriever.py` embeds the query *including the full scheme name*, even though
+  the scheme is already applied as a Chroma metadata filter. The long fund name is
+  noise that matches every chunk of that scheme equally and dilutes the real term.
+- `rag/query_expand.py` appends synonym variants (`exit load` →
+  `exit charge redemption charge exit penalty`). For these short value chunks the
+  extra terms *dilute* rather than help: expansion measurably scores worse than not
+  expanding at all.
+
+Measured along the real production path (`expand()` then `embed_query()`), against the
+`hdfc_elss` chunk holding the actual value:
+
+| Query | As shipped | No expansion | Scheme name stripped |
+|---|---|---|---|
+| `exit load HDFC ELSS` | rank 3, 0.6670, fail | rank 1, 0.5294, pass | rank 1, 0.2141, pass |
+| `Does HDFC ELSS have an exit load?` | rank 3, 0.6753, fail | rank 2, 0.5908, fail | rank 1, 0.3061, pass |
+| `What is the exit load on HDFC ELSS Tax Saver Fund - Direct Plan - Growth?` | rank 10, 0.6886, fail | rank 11, 0.6751, fail | rank 1, 0.3172, pass |
+
+Note the middle column: for the terse query, shipping the expander is *worse* than
+not expanding (0.6670 versus 0.5294). Expansion is a net negative for this class of
+question, not merely insufficient.
+
+When this happens the model receives only the glossary definition of the term and
+correctly returns the out-of-corpus sentinel, so `verify()` substitutes the static
+refusal. Nothing is hallucinated; the system just fails to find a fact it holds.
+
+This is a class of bug, not a single query: anything whose answer is `Nil`, `--`, or
+otherwise absent-looking is affected.
+
+Stripping the scheme name recovers all three cases at rank 1 and inside the existing
+0.57 gate, with no recalibration. It is still not a safe blanket change, because the
+remaining text can get too short to match — measured best-hit distance for
+`What is the benchmark of HDFC Balanced Advantage Fund - Direct Growth?`:
+
+| Query | As shipped | Scheme name stripped |
+|---|---|---|
+| Balanced Advantage "benchmark" | 0.1994, `About…`, pass | 0.7563, `Returns and rankings`, **fail** |
+
+Stripping scheme aliases alone is safe but recovers nothing. Loosening `MAX_DISTANCE`
+to 0.69 would admit the right chunk here, but it was set deliberately from
+terse-query measurements and raising it weakens the guarantee the design exists to
+provide.
+
+The correct fix is dual-query retrieval: embed both the original query and a
+scheme-stripped variant, merge and dedupe the hits, and let the existing gate judge
+the merged best. That captures both wins above without touching the gate. Widening the
+synonym list would make this worse, not better. Neither is implemented, so treat
+short-value questions as unanswered for now. Reproduce with
+`python -m rag.retriever --probe "<question>"`.
+
+
+## Safety
 Facts-only. No investment advice.
+
